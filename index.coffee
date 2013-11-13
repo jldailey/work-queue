@@ -9,166 +9,195 @@
 # delayed: { schedule: { after: ms } }
 # scheduled: { schedule: { at: timestamp } }
 # immediate: # no when clause
+#
+# This module is intended to be used is two different contexts:
+# one process is unlikely to both read and write.
+#
+# For application processes that want to enqueue new work items, usage looksl ie
 
-MongoClient = require('mongodb').MongoClient
 $ = require 'bling'
+MongoClient = require('mongodb').MongoClient
 die = (code, msg) ->
 	$.log msg
 	process.exit code
 
-url = $(process.argv).last()
-
-unless /^mongodb:/.test url
-	die 1, "Usage: daemon <mongodb://...>"
-
-MongoClient.connect url, { safe: false }, (err, db) ->
+ready = $.Promise().wait (err) ->
 	if err then die 1, err
 
-	q = db.collection("workQueue")
-	q.ensureIndex { status: 1, readyAt: 1 }, { safe: false }
+$.extend module.exports, {
+	push: (item) -> ready.wait (err, queue) -> queue.push item
+	pop:  (cb)   -> ready.wait (err, queue) -> queue.pop cb
+	clear:       -> ready.wait (err, queue) -> queue.clear()
+		
+	connect: (url, opts) ->
+		opts = $.extend {
+			collection: "workQueue"
+			readerId: [ "reader-", 5 ] # get 5 random characters appended
+		}, opts
+		unsafe = safe: false
+		if $.is 'string', opts.id then opts.id = [ opts.id, 0 ]
+		try return @
+		finally MongoClient.connect url, unsafe, (err, db) ->
+			if err then return ready.fail(err)
 
-	Queue = ->
-		reader_id = $.random.string 12, "reader-"
-		log = $.logger "worker #{reader_id}"
-		ifNotBusy = (cb) ->
-			q.find( status: reader_id ).count (err, count) ->
-				if count > 0 then cb "busy", null
-				else cb null
+			q = db.collection(opts.collection)
+			q.ensureIndex { status: 1, readyAt: 1 }, unsafe
 
-		getNextItem = (cb) ->
-			q.update \ # Atomically mark one document as ours
-				{ status: "new", readyAt: { $lt: $.now } }, \
-				{ $set: {
-						status: reader_id, # Mark it as owned by us
-						mtime: $.now
-					}
-				}, { multi: false, safe: true }, (err) ->
-					if err then cb err, null
-					else q.find( # Then retrieve it.
-						{ status: reader_id },
-						null,
-						{ safe: true }
-					).nextObject cb
+			getNewReaderId = -> $.random.string opts.id[0].length + opts.id[1], opts.id[0]
 
-		markAsFailed = (doc, cb) ->
-			log "too many retries, abandoning #{doc._id}"
-			q.update \
-				{ _id: doc._id },
-				{ $set: {
-						status: "failed"
-						mtime: $.now
-					}
-				}, { multi: false, safe: true }, cb
+			Queue = ->
+				readerId = getNewReaderId()
+				log = $.logger "worker #{readerId}"
+				handlers = {}
 
-		markAsRetry = (doc, cb) ->
-			log "re-queueing item #{doc._id}"
-			q.update \
-				{ _id: doc._id },
-				{ $set: {
-						status: "new"
-						readyAt: $.now + 1000
-						mtime: $.now
-					},
-					$inc: { retryCount: 1 }
-				}, { multi: false, safe: true }, cb
+				ifNotBusy = (cb) ->
+					q.find( status: readerId ).count (err, count) ->
+						if count > 0 then cb "busy", null
+						else cb null
 
-		markAsComplete = (doc, cb) ->
-			log "completed item #{doc._id}"
-			status = "complete"
-			readyAt = doc.readyAt
-			if doc.schedule?.every
-				status = "new"
-				readyAt = $.now + doc.schedule.every
-			q.update { _id: doc._id }, \
-				{ $set: {
-						status: status
-						readyAt: readyAt
-						mtime: $.now
-					}
-				}, { multi: false, safe: true }, cb
+				getNextItem = (cb) ->
+					q.update \ # Atomically mark one document as ours
+						{ status: "new", readyAt: { $lt: $.now } }, \
+						{ $set: {
+								status: readerId, # Mark it as owned by us
+								mtime: $.now
+							}
+						}, { multi: false, safe: true }, (err) ->
+							if err then cb err, null
+							else q.find( # Then retrieve it.
+								{ status: readerId },
+								null,
+								{ safe: true }
+							).nextObject cb
 
-		return {
-			clear: ->
-				q.remove {}, (err) ->
-				@
-			push: (item) ->
-				log "inserting", item
-				# TODO: if item has an _id that is already in the db
-				# and the doc in the db is status: "failed", allow overwrite
-				q.insert $.extend(item,
-					status: "new"
-					ctime: $.now
-					mtime: $.now
-					readyAt: switch
-						when not item.schedule? then $.now
-						when item.schedule.after? then $.now + parseFloat item.schedule.after
-						when item.schedule.at? then item.schedule.at
-						else $.now
-				), { safe: true }, (err, doc) ->
-					log "inserted", err ? doc
-				@
-			pop: (cb) ->
-				check = (f) -> (err, data) ->
-					if err then cb err, null
-					else f data
-				ifNotBusy check ->
-					getNextItem check (doc) ->
-						unless doc? then cb null, null
-						else cb null, doc, (err, cbb) ->
-							if err
-								doc.retryCount ?= 0
-								log "failed item #{doc._id} (count: #{doc.retryCount})", err
-								maxFail = doc.schedule?.maxFail ? Infinity
-								if doc.retryCount > maxFail
-									markAsFailed doc, (err) ->
-										if err then log "failed to mark item as 'failed':", err
-										else log "marked item as failed"
-										cbb? "too many retries", null
-								else
-									markAsRetry doc, (err) ->
-										if err then log "failed to re-queue item #{doc._id}"
-										else log "re-queued item #{doc._id}"
-										cbb? "will retry", null
-							else
-								markAsComplete doc, (err) ->
-									if err then log "failed to record completion of _id: #{doc._id}", err
-									else log "marked item as complete #{doc._id}"
-									cbb? null, doc
-				@
-		}
+				markAsFailed = (doc, cb) ->
+					log "too many retries, abandoning #{doc._id}"
+					q.update \
+						{ _id: doc._id },
+						{ $set: {
+								status: "failed"
+								mtime: $.now
+							}
+						}, { multi: false, safe: true }, cb
 
-	queue = Queue()
+				markAsRetry = (doc, cb) ->
+					log "re-queueing item #{doc._id}"
+					q.update \
+						{ _id: doc._id },
+						{ $set: {
+								status: "new"
+								readyAt: $.now + 1000
+								mtime: $.now
+							},
+							$inc: { retryCount: 1 }
+						}, { multi: false, safe: true }, cb
 
-	mins = 60*1000
+				markAsComplete = (doc, cb) ->
+					log "completed item #{doc._id}"
+					status = "complete"
+					readyAt = doc.readyAt
+					if doc.schedule?.every
+						status = "new"
+						readyAt = $.now + doc.schedule.every
+					q.update { _id: doc._id }, \
+						{ $set: {
+								status: status
+								readyAt: readyAt
+								mtime: $.now
+							}
+						}, { multi: false, safe: true }, cb
 
-	handlers =
-		echo: (item, done) ->
-			$.log "ECHO:", item.message
-			done()
+				return {
+					clear: ->
+						q.remove {}, (err) ->
+						@
+					push: (item) ->
+						log "inserting", item
+						# TODO: if item has an _id that is already in the db
+						# and the doc in the db is status: "failed", allow overwrite
+						q.insert $.extend(item,
+							status: "new"
+							ctime: $.now
+							mtime: $.now
+							readyAt: switch
+								when not item.schedule? then $.now
+								when item.schedule.after? then $.now + parseFloat item.schedule.after
+								when item.schedule.at? then item.schedule.at
+								else $.now
+						), { safe: true }, (err, doc) ->
+							log "inserted", err ? doc
+						@
+					pop: (cb) ->
+						check = (f) -> (err, data) ->
+							if err then cb err, null
+							else f data
+						ifNotBusy check ->
+							getNextItem check (doc) ->
+								unless doc? then cb null, null
+								else cb null, doc, (err, cbb) ->
+									if err
+										doc.retryCount ?= 0
+										log "failed item #{doc._id} (count: #{doc.retryCount})", err
+										maxFail = doc.schedule?.maxFail ? Infinity
+										if doc.retryCount > maxFail
+											markAsFailed doc, (err) ->
+												if err then log "failed to mark item as 'failed':", err
+												else log "marked item as failed"
+												cbb? "too many retries", null
+										else
+											markAsRetry doc, (err) ->
+												if err then log "failed to re-queue item #{doc._id}"
+												else log "re-queued item #{doc._id}"
+												cbb? "will retry", null
+									else
+										markAsComplete doc, (err) ->
+											if err then log "failed to record completion of _id: #{doc._id}", err
+											else log "marked item as complete #{doc._id}"
+											cbb? null, doc
+						@
+					register: (type, handler) ->
+						handlers[type] = handler
+						@
+					createWorker: (worker_opts) ->
+						paused = true
+						busy_count = 0
+						worker_opts = $.extend {
+							idle_delay: 100
+							busy_delay: 500
+							busy_max: 10
+						}, worker_opts
+						nextItem = (err) =>
+							if err then $.log "err", err
+							return if paused
+							@pop (err, item, done) -> switch
+								# Failure
+								when err then switch err
+									# Busy: we still have outstanding items 
+									when "busy"
+										if ++busy_count > worker_opts.busy_max
+											log "busy for too long"
+											readerId = getNewReaderId()
+											log = $.logger "worker #{readerId}"
+											log "starting over with new reader id"
+										$.delay worker_opts.busy_delay, nextItem
+									# Unknown Error: just log it and move on
+									else $.log "pop error:", err
+								# Idle: wait for idle_delay and poll the next item
+								when (not item?) and (not done?) then $.delay worker_opts.idle_delay, nextItem
+								# Real work! Execute the handler for this type of job
+								when item.type of handlers then handlers[item.type] item, -> done null, nextItem
+								else done "unknown type: #{JSON.stringify item}"
+							null
+						pause: ->
+							unless paused
+								paused = true
+							@
+						resume: ->
+							if paused
+								paused = false
+								do nextItem
+							@
+				}
 
-	$.delay 100, ->
-		do nextItem = (err) ->
-			if err then $.log "err", err
-			queue.pop (err, item, done) -> switch
-				when err then switch err
-					when "busy" then $.delay 1000, nextItem
-					else $.log "pop error:", err
-				when (not item?) and (not done?) then $.delay 300, nextItem
-				when item.type of handlers then handlers[item.type] item, -> done null, nextItem
-				else done "unknown type: #{JSON.stringify item}"
-
-	queue.clear().push(
-		type: "echo"
-		schedule: { every: .1*mins, maxFail: Infinity }
-		message: "Should recur every six seconds"
-		_id: "only_one"
-	).push(
-		type: "echo"
-		schedule: { after: .5*mins }
-		message: "Once after thirty seconds"
-	).push(
-		type: "echo"
-		schedule: { at: $.now + 3000 }
-		message: "Once after three seconds"
-	)
-
+			ready.finish Queue()
+}
