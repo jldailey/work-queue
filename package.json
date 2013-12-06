@@ -4,13 +4,13 @@
   "description": "Process scheduled items from a queue held in MongoDB.",
   "main": "index.coffee",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "make test"
   },
   "author": "Jesse Dailey <jesse.dailey@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "coffee-script": "~1.6.3",
-    "bling": "~0.3.3",
-    "mongodb": "~1.3.19"
+    "coffee-script": "latest",
+    "bling": "latest",
+    "mongodb": "latest"
   }
 }
