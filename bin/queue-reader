@@ -1,5 +1,7 @@
+#!/usr/bin/env coffee
 
 Optimist = require('optimist')
+$ = require 'bling'
 $.log "Options:", opts = Optimist \
 	.options('c', {
 		alias: 'collection',

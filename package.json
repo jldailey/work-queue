@@ -12,6 +12,7 @@
   "dependencies": {
     "coffee-script": "latest",
     "bling": "latest",
-    "mongodb": "latest"
+    "mongodb": "latest",
+		"optimist": "latest"
   }
 }
