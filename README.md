@@ -109,3 +109,4 @@ module.exports['echo'] = (item, done) ->
 	done()
 ```
 
+The `-i` or `--interval` option is only meaningful when the queue is empty.  When each work item is completed, a check for new work is performed immediately.
