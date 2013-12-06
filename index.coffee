@@ -23,16 +23,20 @@ die = (code, msg) ->
 
 ready = $.Promise().wait (err) ->
 	if err then die 1, err
+	else $.log "new connection made"
 
 $.extend module.exports, {
-	push: (item) -> ready.wait (err, queue) -> queue.push item
-	pop:  (cb)   -> ready.wait (err, queue) -> queue.pop cb
-	clear:       -> ready.wait (err, queue) -> queue.clear()
-		
+	push: (item) -> ready.wait( (err, queue) -> queue.push item ); @
+	pop:  (cb)   -> ready.wait( (err, queue) -> queue.pop cb ); @
+	clear:       -> ready.wait( (err, queue) -> queue.clear() ); @
+	close:       -> $.log("close wait"); return ready.wait (err, queue) -> queue.close()
+	count: (cb)  -> ready.wait( (err, queue) -> queue.count cb ); @
+
 	connect: (url, opts) ->
+		$.log "connecting to", url
 		opts = $.extend {
 			collection: "workQueue"
-			readerId: [ "reader-", 5 ] # get 5 random characters appended
+			id: [ "reader-", 5 ] # get 5 random characters appended
 		}, opts
 		unsafe = safe: false
 		if $.is 'string', opts.id then opts.id = [ opts.id, 0 ]
@@ -108,9 +112,20 @@ $.extend module.exports, {
 						}, { multi: false, safe: true }, cb
 
 				return {
+					close: ->
+						$.log "closing"
+						db.close()
+						$.log "resetting", ready.promiseId
+						ready.reset()
+						ready.wait (err) ->
+							if err then $.log "connect error:", err
+							else $.log "reconnected"
+
 					clear: ->
-						q.remove {}, (err) ->
-						@
+						$.log "clearing"
+						q.remove {}, -> $.log "clear result:", arguments
+
+					count: (cb) -> q.count { status: "new" }, cb
 					push: (item) ->
 						log "inserting", item
 						# TODO: if item has an _id that is already in the db
