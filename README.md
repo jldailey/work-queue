@@ -84,3 +84,28 @@ to handle each `type` of item it will find there.
 ```
 
 A usable example can be found in `bin/queue-reader.coffee`.
+
+bin/queue-reader.coffee
+-----------------------
+
+```
+Usage: queue-reader [options...] mongodb://host:port/db_name
+
+Options:
+  -c, --collection  the collection to hold work orders in                                                         [default: "workQueue"]
+  -i, --interval    when idle, how often to look for new work                                                     [default: 100]
+  -r, --require     require this/these module(s), which should export type handlers                               [default: ""]
+  -d, --demo        DANGEROUS: load an example queue as a test, will flush all jobs in the specificed collection  [default: false]
+```
+
+The `-r` or `--require` option is the most important if you want to do real work.  It can be given multiple times, and each string given to it will be passed to `require()` within the reader script.
+
+Each module required in this way should export an object full of `{ type: handler }` pairs.
+
+Example:
+```coffee
+module.exports['echo'] = (item, done) ->
+	console.log item
+	done()
+```
+
