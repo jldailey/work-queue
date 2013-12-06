@@ -8,6 +8,7 @@
   },
   "author": "Jesse Dailey <jesse.dailey@gmail.com>",
   "license": "MIT",
+	"repository": "http://github.com/jldailey/work-queue.git",
   "dependencies": {
     "coffee-script": "latest",
     "bling": "latest",
