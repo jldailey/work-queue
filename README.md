@@ -10,15 +10,15 @@ Use WorkQueue.connect(url, [opts]).
 
 Default opts shown here.
 
-```coffee
+```
 
-WorkQueue = require 'work-queue'
+WorkQueue = require('work-queue')
 
-WorkQueue.connect "mongodb://localhost:27017/test", {
+WorkQueue.connect("mongodb://localhost:27017/test", {
 	collection: "workQueue",
-	readerId: [ "reader-", 5 ], # 5 chars of randomness
-	# consider, readerId: "app-server-56"
-}
+	readerId: [ "reader-", 5 ], // 5 chars of randomness
+	// consider, readerId: "app-server-56"
+})
 
 ```
 
@@ -27,22 +27,22 @@ Scheduling Jobs
 
 ```
 
-WorkQueue.push {
-	type: "my-type"
+WorkQueue.push({
+	type: "my-type",
 	schedule: { at: timestamp }
-}
+})
 
 ```
 
 You can schedule when the job is due using:
  * `at` with an absolute timestamp in ms
  * `every` with an interval in ms, example:
-	```coffee
-		WorkQueue.push { type: "foo", schedule: { every: 30*1000} }
+	```
+		WorkQueue.push({ type: "foo", schedule: { every: 30*1000} })
 	```
  * `after` with a delay in ms, example:
-	```coffee
-		WorkQueue.push { type: "foo", schedule: { after: 5*60*1000 } }
+	```
+		WorkQueue.push({ type: "foo", schedule: { after: 5*60*1000 } })
 	```
 
 You can combine `every` and `after`, to control when the first iteration occurs.
@@ -66,20 +66,22 @@ Plus any fields given when `push`ed.
 To turn the current process into a Worker, first you must teach it how
 to handle each `type` of item it will find there.
 
-```coffee
-	WorkQueue.register 'my-type', (item, done) ->
-		# item has all the fields shown above
-		doWorkOnItem item, (err) ->
-			if err then done(err) # fail
-			else done() # all ok!
+```
+	WorkQueue.register('my-type', function(item, done) {
+		// item has all the fields shown above
+		doWorkOnItem(item, function (err) {
+			if(err) { done(err) }
+			else { done() }
+		})
+	})
 	
-	worker = WorkQueue.createWorker {
-		idle_delay: 100 # polling interval if nothing to do
-	}
+	worker = WorkQueue.createWorker({
+		idle_delay: 100 // polling interval if nothing to do
+	})
 	
 	worker.resume()
-	# run this example for 10 seconds, then pause
-	setTimeout worker.pause, 10000
+	// run this example for 10 seconds, then pause
+	setTimeout(worker.pause, 10000)
 	
 ```
 
@@ -103,10 +105,11 @@ The `-r` or `--require` option is the most important if you want to do real work
 Each module required in this way should export an object full of `{ type: handler }` pairs.
 
 Example:
-```coffee
-module.exports['echo'] = (item, done) ->
-	console.log item
+```
+module.exports['echo'] = function (item, done) {
+	console.log(item)
 	done()
+}
 ```
 
 The `-i` or `--interval` option is only meaningful when the queue is empty.  When each work item is completed, a check for new work is performed immediately.
