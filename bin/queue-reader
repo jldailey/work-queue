@@ -2,23 +2,23 @@
 
 Optimist = require('optimist')
 $ = require 'bling'
-$.log "Options:", opts = Optimist \
-	.options('c', {
+opts = Optimist \
+	.options('c', { \
 		alias: 'collection',
 		default: 'workQueue',
 		describe: 'the collection to hold work orders in'
 	}) \
-	.options('i', {
+	.options('i', { \
 		alias: 'interval',
 		default: 100
 		describe: 'when idle, how often to look for new work'
 	}) \
-	.options('r', {
+	.options('r', { \
 		alias: 'require',
 		default: '',
 		describe: 'require this/these module(s), which should export type handlers'
 	}) \
-	.option('d', {
+	.option('d', { \
 		alias: 'demo',
 		default: false
 		describe: 'DANGEROUS: load an example queue as a test, will flush all jobs in the specificed collection'
@@ -30,8 +30,10 @@ $.log "Options:", opts = Optimist \
 	)
 	.usage("Usage: $0 [options...] mongodb://host:port/db_name")
 	.argv
-url = opts._
+url = opts._[0]
 mins = 60*1000
+
+$.log "Options:", opts
 
 W = require "../index.coffee"
 
