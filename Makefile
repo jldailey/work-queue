@@ -1,7 +1,7 @@
 
 MOCHA=node_modules/.bin/mocha
 MOCHA_FMT=spec
-MOCHA_OPTS=--compilers coffee:coffee-script --globals Bling,$$ -R ${MOCHA_FMT} -s 100
+MOCHA_OPTS=--compilers coffee:coffee-script/register --globals Bling,$$ -R ${MOCHA_FMT} -s 100 --bail
 
 all: test
 
