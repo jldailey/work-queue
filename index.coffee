@@ -26,11 +26,27 @@ ready = $.Promise().wait (err) ->
 	else $.log "new connection made"
 
 $.extend module.exports, {
-	push: (item) -> ready.wait( (err, queue) -> queue.push item ); @
+	push: (item) ->
+		unless 'type' of item
+			throw new Error("a 'type' is required on work items")
+		ready.wait( (err, queue) -> queue.push item ); @
 	pop:  (cb)   -> ready.wait( (err, queue) -> queue.pop cb ); @
 	clear:       -> ready.wait( (err, queue) -> queue.clear() ); @
-	close:       -> $.log("close wait"); return ready.wait (err, queue) -> queue.close()
+	close:       -> ready.wait (err, queue) -> queue.close()
 	count: (cb)  -> ready.wait( (err, queue) -> queue.count cb ); @
+	register: (type, handler) ->
+		ready.wait (err, queue) -> queue.register type, handler
+	createWorker: (opts) ->
+		w = $.Promise()
+		ready.wait (err, queue) ->
+			if err then w.reject err
+			else w.resolve queue.createWorker()
+		return {
+			pause: ->
+				w.then (worker) -> worker.pause()
+			resume: ->
+				w.then (worker) -> worker.resume()
+		}
 
 	connect: (url, opts) ->
 		$.log "connecting to", url
@@ -45,7 +61,7 @@ $.extend module.exports, {
 			if err then return ready.fail(err)
 
 			q = db.collection(opts.collection)
-			q.ensureIndex { status: 1, readyAt: 1 }, unsafe
+			q.ensureIndex { status: 1, readyAt: 1 }, unsafe, (err) ->
 
 			getNewReaderId = -> $.random.string opts.id[0].length + opts.id[1], opts.id[0]
 
@@ -92,8 +108,7 @@ $.extend module.exports, {
 								status: "new"
 								readyAt: $.now + 1000
 								mtime: $.now
-							},
-							$inc: { retryCount: 1 }
+							}, "$inc": { retryCount: 1 }
 						}, { multi: false, safe: true }, cb
 
 				markAsComplete = (doc, cb) ->
@@ -114,7 +129,7 @@ $.extend module.exports, {
 				return {
 					close: ->
 						$.log "closing"
-						db.close()
+						db.close -> $.log "closed"
 						$.log "resetting", ready.promiseId
 						ready.reset()
 						ready.wait (err) ->
@@ -123,11 +138,13 @@ $.extend module.exports, {
 
 					clear: ->
 						$.log "clearing"
-						q.remove {}, -> $.log "clear result:", arguments
+						q.remove {}, (err) -> $.log "clear result:", err
 
 					count: (cb) -> q.count { status: "new" }, cb
 					push: (item) ->
 						log "inserting", item
+						unless 'type' of item
+							throw new Error("a 'type' is required on work items")
 						# TODO: if item has an _id that is already in the db
 						# and the doc in the db is status: "failed", allow overwrite
 						q.insert $.extend(item,
@@ -177,9 +194,9 @@ $.extend module.exports, {
 						paused = true
 						busy_count = 0
 						worker_opts = $.extend {
-							idle_delay: 100
-							busy_delay: 500
-							busy_max: 10
+							idle_delay: 100 # polling interval when the queue is empty
+							busy_delay: 500 # delay interval if we try to fetch new items while still working on an old one
+							busy_max: 10 # give up on a work item if we work on it for longer than (busy_max * busy_delay) ms
 						}, worker_opts
 						nextItem = (err) =>
 							if err then $.log "err", err
@@ -187,16 +204,16 @@ $.extend module.exports, {
 							@pop (err, item, done) -> switch
 								# Failure
 								when err then switch err
-									# Busy: we still have outstanding items 
+									# Busy: we still have outstanding items
 									when "busy"
 										if ++busy_count > worker_opts.busy_max
 											log "busy for too long"
 											readerId = getNewReaderId()
+											log "starting over with new worker id", readerId
 											log = $.logger "worker #{readerId}"
-											log "starting over with new reader id"
 										$.delay worker_opts.busy_delay, nextItem
 									# Unknown Error: just log it and move on
-									else $.log "pop error:", err
+									else log "pop error:", err
 								# Idle: wait for idle_delay and poll the next item
 								when (not item?) and (not done?) then $.delay worker_opts.idle_delay, nextItem
 								# Real work! Execute the handler for this type of job
