@@ -6,6 +6,9 @@
   "scripts": {
     "test": "make test"
   },
+	"bin": {
+		"queue-reader": "./bin/queue-reader.coffee"
+	},
   "author": "Jesse Dailey <jesse.dailey@gmail.com>",
   "license": "MIT",
 	"repository": "http://github.com/jldailey/work-queue.git",
