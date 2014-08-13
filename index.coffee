@@ -30,10 +30,11 @@ $.extend module.exports, {
 		unless 'type' of item
 			throw new Error("a 'type' is required on work items")
 		ready.wait( (err, queue) -> queue.push item ); @
-	pop:  (cb)   -> ready.wait( (err, queue) -> queue.pop cb ); @
-	clear:       -> ready.wait( (err, queue) -> queue.clear() ); @
-	close:       -> ready.wait (err, queue) -> queue.close()
-	count: (cb)  -> ready.wait( (err, queue) -> queue.count cb ); @
+	pop:  (cb)      -> ready.wait( (err, queue) -> queue.pop cb ); @
+	clear:          -> ready.wait( (err, queue) -> queue.clear() ); @
+	remove: (query) -> ready.wait( (err, queue) -> queue.remove(query) ); @
+	close:          -> ready.wait (err, queue) -> queue.close()
+	count: (cb)     -> ready.wait( (err, queue) -> queue.count cb ); @
 	register: (type, handler) ->
 		ready.wait (err, queue) -> queue.register type, handler
 	createWorker: (opts) ->
@@ -42,10 +43,8 @@ $.extend module.exports, {
 			if err then w.reject err
 			else w.resolve queue.createWorker()
 		return {
-			pause: ->
-				w.then (worker) -> worker.pause()
-			resume: ->
-				w.then (worker) -> worker.resume()
+			pause: -> w.then (worker) -> worker.pause()
+			resume: -> w.then (worker) -> worker.resume()
 		}
 
 	connect: (url, opts) ->
@@ -128,18 +127,14 @@ $.extend module.exports, {
 
 				return {
 					close: ->
-						$.log "closing"
 						db.close -> $.log "closed"
-						$.log "resetting", ready.promiseId
 						ready.reset()
 						ready.wait (err) ->
 							if err then $.log "connect error:", err
 							else $.log "reconnected"
 
-					clear: ->
-						$.log "clearing"
-						q.remove {}, (err) -> $.log "clear result:", err
-
+					clear: -> q.remove {}, (err) ->
+					remove: (query) -> q.remove query, (err) ->
 					count: (cb) -> q.count { status: "new" }, cb
 					push: (item) ->
 						log "inserting", item
