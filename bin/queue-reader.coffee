@@ -21,7 +21,7 @@ opts = Optimist \
 	.option('d', { \
 		alias: 'demo',
 		default: false
-		describe: 'DANGEROUS: load an example queue as a test, will flush all jobs in the specificed collection'
+		describe: 'DANGEROUS: load an example queue as a test, will flush all jobs in the specified collection'
 	}) \
 	.demand(1)
 	.check( (argv) ->
