@@ -105,7 +105,6 @@ $.extend module.exports, {
 					count: (cb) -> q.count { status: "new" }, cb
 					push: (item) ->
 						unless 'type' of item
-							$.log "throwing error"
 							throw new Error("a 'type' is required on work items")
 						# TODO: if item has an _id that is already in the db
 						# and the doc in the db is status: "failed", allow overwrite
