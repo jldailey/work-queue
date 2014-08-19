@@ -1,6 +1,6 @@
 {
   "name": "work-queue",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Process scheduled items from a queue held in MongoDB.",
   "main": "index.coffee",
   "scripts": {
