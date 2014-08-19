@@ -12,9 +12,9 @@ Default opts shown here.
 
 ```
 
-WorkQueue = require('work-queue')
 
-WorkQueue.connect("mongodb://localhost:27017/test", {
+
+WorkQueue = require('work-queue').connect("mongodb://localhost:27017/test", {
 	collection: "workQueue",
 	readerId: [ "reader-", 5 ], // 5 chars of randomness
 	// consider, readerId: "app-server-56"

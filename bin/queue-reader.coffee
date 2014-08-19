@@ -25,7 +25,7 @@ opts = Optimist \
 	}) \
 	.demand(1)
 	.check( (argv) ->
-		unless /^mongodb:/.test argv._
+		unless /^mongodb:/.test argv._[0]
 			throw new Error("url must begin with mongodb://")
 	)
 	.usage("Usage: $0 [options...] mongodb://host:port/db_name")
@@ -35,29 +35,28 @@ mins = 60*1000
 
 $.log "Options:", opts
 
-W = require "../index.coffee"
+Q = require("../index.coffee").connect url, { collection: opts.collection }
 
 if $.is 'array', opts.require
 	for r in opts.require
-		$.log "Requiring '#{r}'..."
+		$.log "Requiring module '#{r}'..."
 		for type, handler of require(r)
+			$.log "Registering type from '#{r}':", type
 			$.assert ($.is 'string', type), "type must be string: #{type}"
 			$.assert ($.is 'function', handler), "handler must be function: #{handler}"
-			W.register type, handler
+			Q.register type, handler
 
-W.connect url, { collection: opts.collection }
-
-worker = W.createWorker {
+worker = Q.createWorker {
 	idle_delay: opts.interval
 }
 
 worker.resume()
 
 if opts.demo
-	W.register 'echo', (item, done) ->
+	Q.register 'echo', (item, done) ->
 		$.log "ECHO:", item.message
 		done()
-	W.clear().push(
+	Q.clear().push(
 		type: "echo"
 		schedule: { every: .1*mins, maxFail: Infinity }
 		message: "Should recur every six seconds"
@@ -72,6 +71,7 @@ if opts.demo
 		message: "Once after three seconds"
 	)
 
-	$.delay 32000, ->
+	$.delay 34000, ->
 		$.log "Ending demo."
 		worker.pause()
+		Q.close()
